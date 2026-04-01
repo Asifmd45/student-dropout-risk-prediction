@@ -4,12 +4,10 @@ import joblib
 import pandas as pd
 import streamlit as st
 
-
 MODEL_DIR = Path("Models")
 MODEL_PATH = MODEL_DIR / "logistic_regression_model.pkl"
 SCALER_PATH = MODEL_DIR / "scaler.pkl"
 FEATURE_COLUMNS_PATH = MODEL_DIR / "feature_columns.pkl"
-
 
 RAW_FEATURES = [
     "school",
@@ -46,6 +44,41 @@ RAW_FEATURES = [
 ]
 
 
+DEFAULT_STUDENT = {
+    "school": "GP",
+    "sex": "F",
+    "age": 17,
+    "address": "U",
+    "famsize": "GT3",
+    "Pstatus": "T",
+    "Medu": 2,
+    "Fedu": 2,
+    "Mjob": "other",
+    "Fjob": "other",
+    "reason": "course",
+    "guardian": "mother",
+    "traveltime": 2,
+    "studytime": 2,
+    "failures": 0,
+    "schoolsup": "no",
+    "famsup": "yes",
+    "paid": "no",
+    "activities": "yes",
+    "nursery": "yes",
+    "higher": "yes",
+    "internet": "yes",
+    "romantic": "no",
+    "famrel": 3,
+    "freetime": 3,
+    "goout": 3,
+    "Dalc": 1,
+    "Walc": 1,
+    "health": 3,
+    "absences": 4,
+    "G1": 10,
+}
+
+
 def risk_category(score: float) -> str:
     if score >= 0.7:
         return "High Risk"
@@ -54,11 +87,20 @@ def risk_category(score: float) -> str:
     return "Low Risk"
 
 
+def patch_model_compat(model):
+    # Some sklearn version combinations can deserialize LogisticRegression
+    # without this attribute, which breaks predict_proba.
+    if model.__class__.__name__ == "LogisticRegression" and not hasattr(model, "multi_class"):
+        model.multi_class = "auto"
+    return model
+
+
 @st.cache_resource
 def load_artifacts():
     model = joblib.load(MODEL_PATH)
     scaler = joblib.load(SCALER_PATH)
     feature_columns = joblib.load(FEATURE_COLUMNS_PATH)
+    model = patch_model_compat(model)
     return model, scaler, feature_columns
 
 
@@ -83,78 +125,34 @@ def predict_risk(raw_df: pd.DataFrame, model, scaler, feature_columns: list[str]
 
 def build_single_input_form() -> dict:
     st.subheader("Single Student Prediction")
-    col1, col2, col3 = st.columns(3)
+    st.caption("Using 5 key inputs. Remaining features are auto-filled with baseline values.")
 
+    col1, col2 = st.columns(2)
     with col1:
-        school = st.selectbox("School", ["GP", "MS"])
-        sex = st.selectbox("Sex", ["F", "M"])
-        age = st.slider("Age", min_value=15, max_value=22, value=17)
-        address = st.selectbox("Address", ["U", "R"])
-        famsize = st.selectbox("Family Size", ["GT3", "LE3"])
-        pstatus = st.selectbox("Parent Status", ["T", "A"])
-        medu = st.slider("Mother Education (0-4)", 0, 4, 2)
-        fedu = st.slider("Father Education (0-4)", 0, 4, 2)
-        mjob = st.selectbox("Mother Job", ["at_home", "teacher", "health", "services", "other"])
-        fjob = st.selectbox("Father Job", ["at_home", "teacher", "health", "services", "other"])
+        studytime = st.slider("Study Time (1-4)", min_value=1, max_value=4, value=DEFAULT_STUDENT["studytime"])
+        absences = st.number_input("Absences", min_value=0, max_value=100, value=DEFAULT_STUDENT["absences"])
+        g1 = st.slider("First Period Grade (G1)", 0, 20, DEFAULT_STUDENT["G1"])
 
     with col2:
-        reason = st.selectbox("School Choice Reason", ["course", "home", "reputation", "other"])
-        guardian = st.selectbox("Guardian", ["mother", "father", "other"])
-        traveltime = st.slider("Travel Time (1-4)", 1, 4, 2)
-        studytime = st.slider("Study Time (1-4)", 1, 4, 2)
-        failures = st.slider("Past Class Failures", 0, 4, 0)
-        schoolsup = st.selectbox("School Support", ["yes", "no"])
-        famsup = st.selectbox("Family Support", ["yes", "no"])
-        paid = st.selectbox("Extra Paid Classes", ["yes", "no"])
-        activities = st.selectbox("Extra Activities", ["yes", "no"])
-        nursery = st.selectbox("Attended Nursery", ["yes", "no"])
+        failures = st.slider("Past Class Failures", 0, 4, DEFAULT_STUDENT["failures"])
+        goout = st.slider(
+            "Going Out With Friends (1-5)",
+            min_value=1,
+            max_value=5,
+            value=DEFAULT_STUDENT["goout"],
+        )
 
-    with col3:
-        higher = st.selectbox("Wants Higher Education", ["yes", "no"])
-        internet = st.selectbox("Internet At Home", ["yes", "no"])
-        romantic = st.selectbox("In Romantic Relationship", ["yes", "no"])
-        famrel = st.slider("Family Relationship (1-5)", 1, 5, 3)
-        freetime = st.slider("Free Time (1-5)", 1, 5, 3)
-        goout = st.slider("Going Out With Friends (1-5)", 1, 5, 3)
-        dalc = st.slider("Workday Alcohol (1-5)", 1, 5, 1)
-        walc = st.slider("Weekend Alcohol (1-5)", 1, 5, 1)
-        health = st.slider("Current Health (1-5)", 1, 5, 3)
-        absences = st.number_input("Absences", min_value=0, max_value=100, value=4)
-        g1 = st.slider("First Period Grade (G1)", 0, 20, 10)
-
-    return {
-        "school": school,
-        "sex": sex,
-        "age": age,
-        "address": address,
-        "famsize": famsize,
-        "Pstatus": pstatus,
-        "Medu": medu,
-        "Fedu": fedu,
-        "Mjob": mjob,
-        "Fjob": fjob,
-        "reason": reason,
-        "guardian": guardian,
-        "traveltime": traveltime,
-        "studytime": studytime,
-        "failures": failures,
-        "schoolsup": schoolsup,
-        "famsup": famsup,
-        "paid": paid,
-        "activities": activities,
-        "nursery": nursery,
-        "higher": higher,
-        "internet": internet,
-        "romantic": romantic,
-        "famrel": famrel,
-        "freetime": freetime,
-        "goout": goout,
-        "Dalc": dalc,
-        "Walc": walc,
-        "health": health,
-        "absences": absences,
-        "G1": g1,
-    }
+    student = DEFAULT_STUDENT.copy()
+    student.update(
+        {
+            "studytime": studytime,
+            "absences": int(absences),
+            "G1": g1,
+            "failures": failures,
+            "goout": goout,
+        }
+    )
+    return student
 
 
 def validate_batch_columns(batch_df: pd.DataFrame) -> tuple[bool, list[str]]:
